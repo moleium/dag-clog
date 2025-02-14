@@ -1,0 +1,174 @@
+---
+---
+
+<div class="h-screen flex bg-background">
+  <!-- Upload Container -->
+  <div class="w-1/2 flex flex-col border-r border-border">
+    <div class="flex-1 p-8 flex flex-col">
+      <div 
+        id="dropzone"
+        class="flex-1 flex flex-col items-center justify-center border-2 border-dashed border-border rounded-lg p-10 text-center hover:border-primary/50 hover:bg-accent/25 transition-all cursor-pointer"
+      >
+        <svg xmlns="http://www.w3.org/2000/svg" class="h-12 w-12 text-muted-foreground mb-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12" />
+        </svg>
+        <div class="space-y-2">
+          <label for="file-upload" class="block text-sm font-medium">
+            <span class="text-primary hover:text-primary/80 cursor-pointer">Choose a file</span>
+            <input id="file-upload" name="file-upload" type="file" class="sr-only" />
+          </label>
+          <p class="text-sm text-muted-foreground">or drag and drop</p>
+          <p class="text-xs text-muted-foreground">Supports .clog files</p>
+        </div>
+      </div>
+
+      <button
+        id="clear"
+        class="mt-4 w-full inline-flex items-center justify-center rounded-lg bg-background/50 px-4 py-2 text-sm font-medium text-foreground hover:bg-accent/50 transition-colors border border-border"
+      >
+        Clear input
+      </button>
+    </div>
+  </div>
+
+  <!-- Output Container -->
+  <div class="w-1/2 flex flex-col">
+    <div class="flex-1 p-8 flex flex-col">
+      <textarea
+        id="output"
+        readonly
+        class="flex-1 w-full rounded-lg bg-background/50 px-4 py-3 text-sm font-mono focus:outline-none focus:ring-1 focus:ring-primary/50 resize-none overflow-auto"
+        placeholder="Decrypted data will appear here..."
+      ></textarea>
+      <div class="flex items-center justify-end gap-2 mb-4">
+        <button
+          id="copy"
+          class="bg-background rounded-md inline-flex items-center justify-center px-4 py-2 text-sm font-medium text-foreground transition-colors border border-border"
+        >
+          Copy
+        </button>
+        <button
+          id="download"
+          class="bg-background rounded-md inline-flex items-center justify-center px-4 py-2 text-sm font-medium text-foreground transition-colors border border-border"
+        >
+          Download
+        </button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+  const XOR_KEY = new Uint8Array([
+    0x82, 0x87, 0x97, 0x40, 0x8d, 0x8b, 0x46, 0x0b, 0xbb, 0x73, 0x94, 0x03,
+    0xe5, 0xb3, 0x83, 0x53, 0x69, 0x6b, 0x83, 0xda, 0x95, 0xaf, 0x4a, 0x23,
+    0x87, 0xe5, 0x97, 0xac, 0x24, 0x58, 0xaf, 0x36, 0x4e, 0xe1, 0x5a, 0xf9,
+    0xf1, 0x01, 0x4b, 0xb1, 0xad, 0xb6, 0x4c, 0x4c, 0xfa, 0x74, 0x28, 0x69,
+    0xc2, 0x8b, 0x11, 0x17, 0xd5, 0xb6, 0x47, 0xce, 0xb3, 0xb7, 0xcd, 0x55,
+    0xfe, 0xf9, 0xc1, 0x24, 0xff, 0xae, 0x90, 0x2e, 0x49, 0x6c, 0x4e, 0x09,
+    0x92, 0x81, 0x4e, 0x67, 0xbc, 0x6b, 0x9c, 0xde, 0xb1, 0x0f, 0x68, 0xba,
+    0x8b, 0x80, 0x44, 0x05, 0x87, 0x5e, 0xf3, 0x4e, 0xfe, 0x09, 0x97, 0x32,
+    0xc0, 0xad, 0x9f, 0xe9, 0xbb, 0xfd, 0x4d, 0x06, 0x91, 0x50, 0x89, 0x6e,
+    0xe0, 0xe8, 0xee, 0x99, 0x53, 0x00, 0x3c, 0xa6, 0xb8, 0x22, 0x41, 0x32,
+    0xb1, 0xbd, 0xf5, 0x28, 0x50, 0xe0, 0x72, 0xae
+  ]);
+
+  function hexToBytes(hex: string): Uint8Array {
+    hex = hex.replace(/\\x/g, '').replace(/\s/g, '');
+    const bytes = new Uint8Array(hex.length / 2);
+    for (let i = 0; i < hex.length; i += 2) {
+      bytes[i / 2] = parseInt(hex.substr(i, 2), 16);
+    }
+    return bytes;
+  }
+
+  function decryptData(input: Uint8Array): Uint8Array {
+    const output = new Uint8Array(input.length);
+    for (let i = 0; i < input.length; i++) {
+      output[i] = input[i] ^ XOR_KEY[i % XOR_KEY.length];
+    }
+    return output;
+  }
+
+  function isHexString(str: string): boolean {
+    const hexRegex = /^([0-9A-Fa-f]{2}|\\\x[0-9A-Fa-f]{2}|\s)*$/;
+    return hexRegex.test(str);
+  }
+
+  function handleFile(file: File) {
+    const reader = new FileReader();
+    reader.onload = async (e) => {
+      const arrayBuffer = e.target?.result as ArrayBuffer;
+      const inputData = new Uint8Array(arrayBuffer);
+      const decrypted = decryptData(inputData);
+      
+      try {
+        const decoded = new TextDecoder().decode(decrypted);
+        outputEl.value = decoded;
+      } catch {
+        outputEl.value = Array.from(decrypted)
+          .map(b => '\\x' + b.toString(16).padStart(2, '0'))
+          .join('');
+      }
+    };
+    reader.readAsArrayBuffer(file);
+  }
+
+  const outputEl = document.getElementById('output') as HTMLTextAreaElement;
+  const clearBtn = document.getElementById('clear') as HTMLButtonElement;
+  const copyBtn = document.getElementById('copy') as HTMLButtonElement;
+  const downloadBtn = document.getElementById('download') as HTMLButtonElement;
+  const dropzone = document.getElementById('dropzone') as HTMLDivElement;
+  const fileInput = document.getElementById('file-upload') as HTMLInputElement;
+
+  dropzone.addEventListener('dragover', (e) => {
+    e.preventDefault();
+    dropzone.classList.add('border-primary/50', 'bg-accent/25');
+  });
+
+  dropzone.addEventListener('dragleave', () => {
+    dropzone.classList.remove('border-primary/50', 'bg-accent/25');
+  });
+
+  dropzone.addEventListener('drop', (e) => {
+    e.preventDefault();
+    dropzone.classList.remove('border-primary/50', 'bg-accent/25');
+    
+    const file = e.dataTransfer?.files[0];
+    if (file) {
+      handleFile(file);
+    }
+  });
+
+  fileInput.addEventListener('change', () => {
+    const file = fileInput.files?.[0];
+    if (file) {
+      handleFile(file);
+    }
+  });
+
+  clearBtn.addEventListener('click', () => {
+    outputEl.value = '';
+    fileInput.value = '';
+  });
+
+  copyBtn.addEventListener('click', async () => {
+    try {
+      await navigator.clipboard.writeText(outputEl.value);
+    } catch (err) {
+      console.error('Failed to copy text:', err);
+    }
+  });
+
+  downloadBtn.addEventListener('click', () => {
+    const blob = new Blob([outputEl.value], { type: 'text/plain' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = 'decrypted.txt';
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+  });
+</script>

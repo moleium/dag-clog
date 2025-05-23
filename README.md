@@ -1,1 +1,1 @@
-Astro web app for decrypting War Thunder CLOG files.
+
